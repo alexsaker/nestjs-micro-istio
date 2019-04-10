@@ -1,0 +1,93 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: shop-gateway
+spec:
+  selector:
+    istio: ingressgateway # use istio default controller
+  # servers:
+  #   - port:
+  #       number: 80
+  #       name: http
+  #       protocol: HTTP
+  #     hosts:
+  #       - "*"
+  servers:
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      tls:
+        mode: SIMPLE
+        serverCertificate: /etc/istio/ingressgateway-certs/tls.crt
+        privateKey: /etc/istio/ingressgateway-certs/tls.key
+      hosts:
+        - "asaker.dev.com"
+---
+# We need to define a destination rule and
+# apply traffic policy to have route shifting
+# working
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: shop
+spec:
+  host: shop.default.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
+---
+# We define a virtual service that shifts
+# 90% of traffic to v1 of shop deployment
+# 10% to v2 shop deployment
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: shop
+spec:
+  hosts:
+    - "*"
+  gateways:
+    - shop-gateway
+  http:
+    - fault:
+        #Adding 7s seconds blocking rule
+        #when header has end-user:toto-block
+        delay:
+          fixedDelay: 3s
+          percent: 100
+      match:
+        - headers:
+            end-user:
+              exact: toto-block
+      route:
+        - destination:
+            host: shop.default.svc.cluster.local
+            subset: v1
+    - match:
+        - uri:
+            exact: /
+        - uri:
+            exact: /products
+      route:
+        - destination:
+            host: shop.default.svc.cluster.local
+            port:
+              number: 3010
+            subset: v2
+          weight: 10
+        - destination:
+            host: shop
+            port:
+              number: 3010
+            subset: v1
+          weight: 90
+---
+

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: wharehouse
+  labels:
+    app: wharehouse
+spec:
+  # type: NodePort
+  ports:
+    - port: 4000
+      # protocol: TCP
+      name: http
+  selector:
+    app: wharehouse
